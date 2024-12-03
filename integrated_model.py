@@ -101,8 +101,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if ingredient_model is None or label_model is None or reader is None:
-        ingredient_model_path = "C:/HCI_freshScan/models/ingredient_model.pt"
-        label_model_path = "C:/HCI_freshScan/models/label_model.pt"
+        ingredient_model_path = "C:/fresh-Scan/analysis/models/ingredient_model.pt"
+        label_model_path = "C:/fresh-Scan/analysis/models/label_model.pt"
         yolov5_dir = "C:/HCI_freshScan/ultralytics/yolov5"
         initialize_yolo_model(ingredient_model_path, yolov5_dir=yolov5_dir, model_type="ingredient")
         initialize_yolo_model(label_model_path, yolov5_dir=yolov5_dir, model_type="label")
