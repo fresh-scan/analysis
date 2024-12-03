@@ -21,7 +21,7 @@ label_free_ingredients = {"tomato", "pimang", "carrot", "gaji", "cabagge", "beef
 labeled_ingredients = {"tofu", "sauce", "milk"}
 
 
-def initialize_yolo_model(model_path, conf_threshold=0.15, yolov5_dir="", model_type="ingredient"):
+def initialize_yolo_model(model_path, conf_threshold=0.03, yolov5_dir="", model_type="ingredient"):
     global ingredient_model, label_model
     temp = pathlib.PosixPath
     pathlib.PosixPath = pathlib.WindowsPath
@@ -35,7 +35,7 @@ def initialize_yolo_model(model_path, conf_threshold=0.15, yolov5_dir="", model_
         label_model = torch.hub.load(yolov5_dir, "custom", path=model_path, source="local")
         label_model.conf = conf_threshold
         label_model.to("cuda" if torch.cuda.is_available() else "cpu")
-        print("Label detection model initialized.", file=sys.stderr)
+        print("Label detection model initialized.", file=sys.stderr)  
 
     pathlib.PosixPath = temp
 
