@@ -26,16 +26,14 @@ def initialize_yolo_model(model_path, conf_threshold=0.03, yolov5_dir="", model_
     temp = pathlib.PosixPath
     pathlib.PosixPath = pathlib.WindowsPath
 
+    model = torch.hub.load(yolov5_dir, "custom", path=model_path, source="local")
+    model.conf = conf_threshold
+    model.to("cuda" if torch.cuda.is_available() else "cpu")
+
     if model_type == "ingredient":
-        ingredient_model = torch.hub.load(yolov5_dir, "custom", path=model_path, source="local")
-        ingredient_model.conf = conf_threshold
-        ingredient_model.to("cuda" if torch.cuda.is_available() else "cpu")
-        print("Ingredient model initialized.", file=sys.stderr)
+        ingredient_model = model
     elif model_type == "label":
-        label_model = torch.hub.load(yolov5_dir, "custom", path=model_path, source="local")
-        label_model.conf = conf_threshold
-        label_model.to("cuda" if torch.cuda.is_available() else "cpu")
-        print("Label detection model initialized.", file=sys.stderr)  
+        label_model = model
 
     pathlib.PosixPath = temp
 
@@ -52,52 +50,56 @@ def extract_date(text):
     return matches[0] if matches else None
 
 
-def process_image(image_path):
+def process_images(image_paths):
     if ingredient_model is None or label_model is None or reader is None:
         raise ValueError("Models or OCR reader are not initialized.")
 
-    image = cv2.imread(image_path)
-    results = ingredient_model(image_path)
-    detections = results.xyxy[0].cpu().numpy()
+    results = []
+    for image_path in image_paths:
+        image = cv2.imread(image_path)
+        ingredient_results = ingredient_model(image_path)
+        detections = ingredient_results.xyxy[0].cpu().numpy()
 
-    detected_labels = []
-    expiration_dates = []
+        detected_labels = []
+        expiration_dates = []
 
-    if detections.size > 0:
-        for box in detections:
-            x1, y1, x2, y2, conf, cls = map(int, box[:6])
-            label = ingredient_model.names[cls]
-            detected_labels.append(label)
+        if detections.size > 0:
+            for box in detections:
+                x1, y1, x2, y2, conf, cls = map(int, box[:6])
+                label = ingredient_model.names[cls]
+                detected_labels.append(label)
 
-            if label in labeled_ingredients:
-                cropped_region = image[y1:y2, x1:x2]
-                label_results = label_model(cropped_region)
-                label_detections = label_results.xyxy[0].cpu().numpy()
+                if label in {"tofu", "sauce", "milk"}:  # 라벨이 필요한 재료
+                    cropped_region = image[y1:y2, x1:x2]
+                    label_results = label_model(cropped_region)
+                    label_detections = label_results.xyxy[0].cpu().numpy()
 
-                for label_box in label_detections:
-                    lx1, ly1, lx2, ly2, lconf, lcls = map(int, label_box[:6])
-                    label_region = cropped_region[ly1:ly2, lx1:lx2]
-                    text_results = reader.readtext(label_region)
-                    text = " ".join([res[1] for res in text_results]).strip()
-                    date = extract_date(text)
-                    if date:
-                        expiration_dates.append(date)
+                    for label_box in label_detections:
+                        lx1, ly1, lx2, ly2, lconf, lcls = map(int, label_box[:6])
+                        label_region = cropped_region[ly1:ly2, lx1:lx2]
+                        text_results = reader.readtext(label_region)
+                        text = " ".join([res[1] for res in text_results]).strip()
+                        date = extract_date(text)
+                        if date:
+                            expiration_dates.append(date)
 
-    text_results = reader.readtext(image)
-    for _, text, _ in text_results:
-        date = extract_date(text)
-        if date:
-            expiration_dates.append(date)
+        text_results = reader.readtext(image)
+        for _, text, _ in text_results:
+            date = extract_date(text)
+            if date:
+                expiration_dates.append(date)
 
-    return {
-        "detected_labels": detected_labels,
-        "expiration_dates": expiration_dates,
-    }
+        results.append({
+            "detected_labels": detected_labels,
+            "expiration_dates": expiration_dates,
+        })
+
+    return results
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "No image path provided"}))
+        print(json.dumps({"error": "No image paths provided"}))
         sys.exit(1)
 
     if ingredient_model is None or label_model is None or reader is None:
@@ -108,11 +110,9 @@ if __name__ == "__main__":
         initialize_yolo_model(label_model_path, yolov5_dir=yolov5_dir, model_type="label")
         initialize_easyocr()
 
-    image_path = sys.argv[1]
-
+    image_paths = sys.argv[1:]
     try:
-        result = process_image(image_path)
-        print(json.dumps(result))  # JSON 형식으로 순수 응답 출력
+        results = process_images(image_paths)
+        print(json.dumps(results))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
-        sys.exit(1)
